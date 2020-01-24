@@ -123,18 +123,45 @@ row.names(benthicInput) <- benthicInput$FunctionalFeedingGroup
 benthicInput$FunctionalFeedingGroup <- NULL
 
 
-#take a random sample of survey sites, subset benthicInput presence appropriately
-sampleSites <- sample(benthicInput, size=150)
-sampleSites <- t(sampleSites)
-sampleCorrelationMatrix <- rcorr(as.matrix(sampleSites), type = "pearson")
-corrMatrix <- rquery.cormat(sampleSites, type="flatten", graph=FALSE)
-summarized <- data.frame(corrMatrix$r)
+#repeated sampling and subsequent p-value adjustment via Benjamini Hochberg Procedure.
+sampleSize = 10 #number of resamples
+pData <- data.frame(matrix(ncol=10,nrow=0)) #holds all p-values from pairwise comparisons
+colnames(pData) <- c("CfP", "CfPh", "PPh", "CfCg", "PCg", "PhCg", "CfSh","PSh", "PhSh", "CgSh")
+summarized <- data.frame()
+
+
+i = 1 #indexes resampling
+repeat {
+  repeat {
+    #samples and finds correlations between functional feeding groups
+    sampleSites <- sample(benthicInput, size=40)
+    sampleSites <- t(sampleSites)
+    sampleCorrelationMatrix <- rcorr(as.matrix(sampleSites), type = "pearson")
+    if (!any(is.na(sampleCorrelationMatrix$r))) #repeats sampling until a no-NA correlation matrix is made
+    { break }
+  }
+  corrMatrix <- rquery.cormat(sampleSites, type="flatten", graph=FALSE) #flattens the correlation matrix
+  summarized <- data.frame(corrMatrix$r)
+  pData <- rbind(pData, t(summarized$p))  #consolidates p-values
   
-sampleMetadata <- metadata[which(row.names(sampleSites) %in% metadata$SampleNum),]
-dat <- data.frame()
-dat[1,1] <- mean(sampleMetadata$LU, na.rm=TRUE)
-dat <- cbind(dat, mean(sampleMetadata$MaxN, na.rm=TRUE), mean(sampleMetadata$MaxOrthoP, na.rm=TRUE))
-dat <- cbind(dat, mean(sampleMetadata$MaxP, na.rm=TRUE), mean(sampleMetadata$site_elev, na.rm=TRUE))
-colnames(dat) <- c("LU", "MaxN", "MaxOrthoP", "MaxP", "site_elev")
-summarized <- cbind(summarized, dat)
+  #commented out below is a system for collecting sample-specific environmental data
+  #sampleMetadata <- metadata[which(row.names(sampleSites) %in% metadata$SampleNum),]
+  #dat <- data.frame()
+  #dat[1,1] <- mean(sampleMetadata$LU, na.rm=TRUE)
+  #dat <- cbind(dat, mean(sampleMetadata$MaxN, na.rm=TRUE), mean(sampleMetadata$MaxOrthoP, na.rm=TRUE))
+  #dat <- cbind(dat, mean(sampleMetadata$MaxP, na.rm=TRUE), mean(sampleMetadata$site_elev, na.rm=TRUE))
+  #colnames(dat) <- c("LU", "MaxN", "MaxOrthoP", "MaxP", "site_elev")
+  #summarized <- cbind(summarized, dat)
+  
+  i = i+1
+  if (i == sampleSize)
+    { break }
+}
+
+pData <- format(pData, scientific=FALSE)
+adjustments <- data.frame(matrix(ncol=10,nrow=0)) 
+colnames(adjustments) <- c("CfP", "CfPh", "PPh", "CfCg", "PCg", "PhCg", "CfSh","PSh", "PhSh", "CgSh")
+adjustments <- apply(pData, 2, p.adjust)  #adjusts p-values with default method
+adjustments <- apply(pData, 2, p.adjust, method="BH") #adjusts p-values with Benjamini Hochberg
+
   
